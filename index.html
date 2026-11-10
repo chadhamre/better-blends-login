@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Better Blends – Connect Spotify</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #121212; color: #eee;
+           display: flex; min-height: 100vh; align-items: center; justify-content: center; margin: 0; }
+    .card { background: #1e1e1e; padding: 2rem 2.5rem; border-radius: 16px; max-width: 360px; text-align: center; }
+    h1 { font-size: 1.4rem; margin: 0; }
+    .byline { margin: .25rem 0 1.25rem; font-size: .9rem; color: #888; }
+    p { color: #aaa; line-height: 1.5; }
+    button { background: #1db954; color: #000; border: 0; border-radius: 999px;
+             padding: .8rem 1.6rem; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    button.secondary { background: transparent; color: #aaa; border: 1px solid #444; margin-top: 1rem; font-weight: 400; }
+    #status { margin-top: 1rem; min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Better Blends</h1>
+    <p class="byline">by Alicia &amp; Chad</p>
+    <p id="intro">Connect your Spotify once so the daily playlist can learn your taste.</p>
+    <button id="login">Connect Spotify</button>
+    <button id="logout" class="secondary" hidden>Sign out</button>
+    <div id="status"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // ---- Fill these in (Supabase → Project Settings → API) ----
+    const SUPABASE_URL = 'https://YOUR-PROJECT-REF.supabase.co';
+    const SUPABASE_ANON_KEY = 'YOUR-ANON-KEY';
+    // ------------------------------------------------------------
+
+    const SCOPES = 'user-top-read user-read-recently-played user-library-read playlist-modify-private playlist-modify-public';
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const $ = (id) => document.getElementById(id);
+
+    $('login').onclick = () => db.auth.signInWithOAuth({
+      provider: 'spotify',
+      options: { scopes: SCOPES, redirectTo: window.location.origin + window.location.pathname }
+    });
+
+    $('logout').onclick = async () => { await db.auth.signOut(); location.reload(); };
+
+    async function saveToken(session) {
+      const { error } = await db.from('spotify_tokens').upsert({
+        user_id: session.user.id,
+        refresh_token: session.provider_refresh_token,
+        updated_at: new Date().toISOString()
+      });
+      $('status').textContent = error
+        ? '⚠️ Could not save your connection: ' + error.message
+        : '✅ Connected! You can close this page.';
+    }
+
+    function showSignedIn(session) {
+      const name = session.user.user_metadata?.full_name || session.user.email;
+      $('intro').textContent = 'Signed in as ' + name + '.';
+      $('login').hidden = true;
+      $('logout').hidden = false;
+    }
+
+    db.auth.onAuthStateChange((event, session) => {
+      if (!session) return;
+      showSignedIn(session);
+      // The Spotify refresh token is only present right after the Spotify redirect.
+      if (session.provider_refresh_token) {
+        saveToken(session);
+      } else if (!$('status').textContent) {
+        $('status').textContent = 'Already connected. To reconnect, sign out and connect again.';
+      }
+    });
+  </script>
+</body>
+</html>
